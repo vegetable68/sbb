@@ -17,7 +17,7 @@ now = time.time()
 # Load current config
 with open('../../config.json', 'r') as r:
   config = json.load(r)
-  
+
 with open(os.path.join(config['filepath'], 'server_data_processed/{}/blocklst_hash_in_bytearray'.format(config['filetype'])), 'r') as r:
     allhashes = json.load(r)
 dataset_mtx = torch.load(os.path.join(config['filepath'],
@@ -28,6 +28,16 @@ with open(os.path.join(config['filepath'], 'server_data_processed/{}/encrypted_h
 print(len(encrypted_hashes))
 with open(os.path.join(config['filepath'], 'server_data_processed/{}/blocklst_secure_sketch.json'.format(config['filetype'])), 'r') as r:
   allss = json.load(r)
+
+# Run commands in the background so that the server can send a response
+CRYPTEN_COMMAND = ('\"export WORLD_SIZE=2; export RENDEZVOUS=env://;'
+                  'export MASTER_ADDR=172.31.26.205; export MASTER_PORT=29500;'
+                  ' export RANK=1; source ~/miniconda3/etc/profile.d/conda.sh;'
+                  ' (conda activate crypten_env; python ../../mpc_local/launcher.py'
+                  ' --bar={} --size={}; conda deactivate) &\"')
+
+EMP_COMMAND = ('\"/home/ubuntu/sbb-implementation/emp-sh2pc/bin/test_example 2 '
+  '12345 /tmp/server_bucket {} {} &\"')
 
 def convert2b(settings):
 
@@ -67,6 +77,8 @@ def query():
     bucketized = bool(bucketized == 'true')
     use_secure_sketch = request.args.get('use_secure_sketch')
     use_secure_sketch = bool(use_secure_sketch == 'true')
+    use_crypten = bool(request.args.get('use_crypten') == 'true')
+    use_emp = bool(request.args.get('use_emp') == 'true')
     if bucketized:
       selected_cols = request.args.get('cols')
       cols = []
@@ -74,7 +86,7 @@ def query():
       while ind < len(selected_cols):
         cols.append(int(selected_cols[ind:ind+3]))
         ind += 3
-      vals = request.args.get('values') 
+      vals = request.args.get('values')
       vals = [True if v == '1' else False for v in vals]
       print(dataset_mtx[:5])
       values = torch.cuda.BoolTensor(vals)
@@ -100,8 +112,42 @@ def query():
       if bucketized:
         ret = [allhashes[ii] for ii in idx]
         res = {'hashes': 'SEPARATOR'.join(ret)}
+        # If we're doing just the plaintext protocol then res won't be modified
+        if use_crypten:
+          with open('/tmp/server_bucket', 'w') as f:
+            for phash in ret:
+              f.write(phash + '\n')
+          full_cmd = CRYPTEN_COMMAND.format(config['threshold'], len(ret))
+          print('running command', full_cmd)
+          os.system('bash -c ' + full_cmd)
+          res = {'bucket_size': len(ret)}
+        elif use_emp:
+          with open('/tmp/server_bucket', 'w') as f:
+            for phash in ret:
+              f.write(phash + '\n')
+          full_cmd = EMP_COMMAND.format(config['threshold'], len(ret))
+          print('running command', full_cmd)
+          os.system('bash -c ' + full_cmd)
+          res = {'bucket_size': len(ret)}
       else:
-        res = {'hashes': 'SEPARATOR'.join(allhashes)}
+          if use_crypten: 
+            with open('/tmp/server_bucket', 'w') as f:
+              for phash in allhashes:
+                f.write(phash + '\n')
+            full_cmd = CRYPTEN_COMMAND.format(config['threshold'], len(allhashes))
+            print('running command', full_cmd)
+            os.system('bash -c ' + full_cmd)
+            res = {'bucket_size': len(allhashes)}
+          elif use_emp: 
+            with open('/tmp/server_bucket', 'w') as f:
+              for phash in allhashes:
+                f.write(phash + '\n')
+            full_cmd = EMP_COMMAND.format(config['threshold'], len(allhashes))
+            print('running command', full_cmd)
+            os.system('bash -c ' + full_cmd)
+            res = {'bucket_size': len(allhashes)}
+          else:
+            res = {'hashes': 'SEPARATOR'.join(allhashes), 'bucket_size': len(allhashes)}
 
     if bucketized:
       print("bucket size", len(idx))
