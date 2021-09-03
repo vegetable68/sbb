@@ -1,0 +1,12 @@
+syntax = "proto3";
+package sbb;
+option go_package = "sbb";
+
+
+message SBBRequest {
+  repeated bytes Blinded = 1;
+}
+
+message SBBResponse {
+  repeated bytes Evaluation = 1;
+}

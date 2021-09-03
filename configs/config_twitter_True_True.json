@@ -1,0 +1,1 @@
+{"coarse_embed_len": 9, "coarse_threshold": 2, "Reed-Muller M": 8, "Reed-Muller R": 3, "embed_len": 256, "threshold": 32, "Reed-Muller K": 93, "filetype": "twitter", "bucketized": true, "use_secure_sketch": true}
